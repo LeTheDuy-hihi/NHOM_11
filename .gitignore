@@ -1,0 +1,12 @@
+# Ignore everything by default
+*
+
+# Allow directories to be searched
+!*/
+
+# Allow BAN_SUNG directory and its contents
+!BAN_SUNG/**
+
+# Allow .gitignore files
+!.gitignore
+!**/gitignore

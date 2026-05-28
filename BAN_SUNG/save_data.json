@@ -1,0 +1,25 @@
+{
+    "gold": 0,
+    "unlocked_weapons": [
+        "AK-47",
+        "PAN",
+        "FRAG"
+    ],
+    "equipped_weapons": [
+        "AK-47"
+    ],
+    "equipped_melee": "PAN",
+    "equipped_grenade": "FRAG",
+    "perm_upgrades": {
+        "hp": 0,
+        "armor": 0,
+        "damage": 0,
+        "speed": 0,
+        "dash": 0
+    },
+    "inventory": {
+        "Th\u1ebb Truy C\u1eadp": 2,
+        "Radar Si\u00eau C\u1ea5p": 1,
+        "Drone H\u1ed7 Tr\u1ee3": 2
+    }
+}
