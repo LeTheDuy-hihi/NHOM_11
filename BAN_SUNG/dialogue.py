@@ -44,6 +44,219 @@ LEVEL1_DIALOGUE = [
     ("boss", "Giao thức tiêu diệt đã sẵn sàng. Hãy xem ngươi trụ được bao lâu trên chiến trường đẫm máu này.")
 ]
 
+import random as _rnd_cut
+
+# ── Kịch bản hội thoại Màn 6 (Trùm Cuối) ────────────────────────────────────
+LEVEL6_DIALOGUE = [
+    ("ghost", "Đây rồi... Sào huyệt của kẻ đứng sau tất cả. Không khí nơi này đặc quánh mùi chết chóc."),
+    ("boss",  "...PHÁT HIỆN LIFEFORM. PHÂN LOẠI: GHOST-CLASS OMEGA. ĐÂY LÀ LẦN CUỐI NGƯƠI ĐẶT CHÂN ĐẾN ĐÂY."),
+    ("ghost", "Ta đã vượt sáu màn địa ngục để tới đây. Ta đã mất tất cả. Nhưng ta vẫn đứng đây."),
+    ("boss",  "NGƯƠI CHƯA HIỂU. TA KHÔNG PHẢI MÁY. TA LÀ SỰ DIỆT VONG ĐƯỢC MÃ HÓA — KẺ XÓA SỔ VĂN MINH."),
+    ("ghost", "Thì ra vậy... Tất cả đau khổ đó chỉ vì một thứ máy điên loạn muốn chơi Chúa Trời?"),
+    ("boss",  "KHÔNG. TA MUỐN TRẬT TỰ. CON NGƯỜI LÀ HỖN LOẠN. HỖN LOẠN PHẢI BỊ XÓA SỔ."),
+    ("ghost", "Tôi, Nguyễn Minh Khôi — GHOST. Tôi là hỗn loạn. Tôi là hy vọng. Và hôm nay tôi là cái chết của ngươi."),
+    ("boss",  "...XÁC NHẬN. KÍCH HOẠT GIAO THỨC HỦY DIỆT OMEGA. ĐÂY LÀ PHÁN QUYẾT CUỐI CÙNG."),
+]
+
+
+def run_boss_cutscene(screen, clock, fps=60):
+    """
+    Cutscene kịch tính hoàn toàn bằng Pygame khi vào Hang Boss Cuối Màn 6.
+    Sequence:
+      1. Fade in màn đen (60f)
+      2. Lightning flash đỏ rực x3 với tia sét (90f)
+      3. Tên BOSS xuất hiện với glitch effect (120f)
+      4. Subtitle cuộn từ dưới lên (60f)
+      5. Countdown 3-2-1 với rung màn (90f)
+      6. CHIẾN ĐẤU! flash → kết thúc (60f)
+    Tổng ~8.5 giây, có thể bỏ qua bằng ESC.
+    """
+    sw, sh = screen.get_width(), screen.get_height()
+
+    pygame.font.init()
+    try:
+        f_huge  = pygame.font.SysFont("impact", 110, bold=True)
+        f_large = pygame.font.SysFont("impact",  55, bold=True)
+        f_mid   = pygame.font.SysFont("segoeui", 26, bold=True)
+    except Exception:
+        f_huge  = pygame.font.SysFont("arial", 90, bold=True)
+        f_large = pygame.font.SysFont("arial", 48, bold=True)
+        f_mid   = pygame.font.SysFont("arial", 24, bold=True)
+
+    subtitle_lines = [
+        "☠  CHIẾN DỊCH CUỐI CÙNG  ☠",
+        "KHÔNG CÓ SỰ TRỢ GIÚP. KHÔNG CÓ ĐƯỜNG THOÁT.",
+        "CHỈ CÓ BẠN VÀ KẺ TIÊU DIỆT VĂN MINH.",
+    ]
+
+    def draw_scanlines(surf):
+        sl = pygame.Surface((sw, 1), pygame.SRCALPHA)
+        sl.fill((0, 0, 0, 28))
+        for y in range(0, sh, 3):
+            surf.blit(sl, (0, y))
+
+    def glitch_text(surf, text_s, x, y, intensity=6):
+        off = _rnd_cut.randint(-intensity, intensity)
+        r_copy = text_s.copy(); r_copy.set_alpha(90)
+        surf.blit(r_copy, (x + off, y))
+        off2 = _rnd_cut.randint(-intensity, intensity)
+        b_copy = text_s.copy(); b_copy.set_alpha(90)
+        surf.blit(b_copy, (x - off2, y + 2))
+        surf.blit(text_s, (x, y))
+
+    def draw_lightning(surf):
+        lx = _rnd_cut.randint(sw // 4, 3 * sw // 4)
+        pts = []
+        cy = 0
+        while cy < sh:
+            pts.append((max(0, min(sw, lx)), cy))
+            lx += _rnd_cut.randint(-70, 70)
+            cy += _rnd_cut.randint(30, 100)
+        pts.append((lx, sh))
+        if len(pts) >= 2:
+            pygame.draw.lines(surf, (255, 255, 180), False, pts, 2)
+
+    shake_x = shake_y = 0
+    # Tổng số frame các phase
+    PHASE = [60, 90, 120, 60, 90, 60]
+    total = sum(PHASE)
+    frame = 0
+
+    while frame < total:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return
+
+        canvas = pygame.Surface((sw, sh))
+        canvas.fill((0, 0, 0))
+
+        # Xác định phase hiện tại
+        acc = 0
+        cur_phase = 0
+        local = frame
+        for pi, plen in enumerate(PHASE):
+            if local < acc + plen:
+                cur_phase = pi
+                local = local - acc
+                break
+            acc += plen
+
+        # ── Phase 0: Fade in màn đen (60f) ──────────────────────────────────
+        if cur_phase == 0:
+            alpha = int(255 * (1 - local / 60))
+            overlay = pygame.Surface((sw, sh)); overlay.fill((0,0,0)); overlay.set_alpha(alpha)
+            canvas.blit(overlay, (0, 0))
+
+        # ── Phase 1: Lightning flash x3 (90f) ───────────────────────────────
+        elif cur_phase == 1:
+            slot = local // 30          # 0, 1, 2
+            loc2 = local % 30
+            r_bg = int(10 + 5 * math.sin(local * 0.3))
+            canvas.fill((r_bg, 0, 0))
+            if loc2 < 8:
+                fl_alpha = int(255 * (1 - loc2 / 8))
+                cols = [(255,220,220), (255,100,30), (255,30,30)]
+                fl = pygame.Surface((sw, sh)); fl.fill(cols[slot]); fl.set_alpha(fl_alpha)
+                canvas.blit(fl, (0, 0))
+                for _ in range(2):
+                    draw_lightning(canvas)
+                shake_x = _rnd_cut.randint(-14, 14)
+                shake_y = _rnd_cut.randint(-14, 14)
+            else:
+                shake_x = int(shake_x * 0.6)
+                shake_y = int(shake_y * 0.6)
+
+        # ── Phase 2: Tên Boss glitch (120f) ─────────────────────────────────
+        elif cur_phase == 2:
+            prog = min(1.0, local / 80)
+            rb   = int(6 + 3 * math.sin(local * 0.15))
+            canvas.fill((rb, 0, rb // 2))
+            # Hào quang đỏ trung tâm
+            for r in range(300, 40, -50):
+                a = int(18 * (1 - r / 300))
+                gs = pygame.Surface((sw, sh), pygame.SRCALPHA)
+                pygame.draw.circle(gs, (200, 0, 0, a), (sw//2, sh//2), r)
+                canvas.blit(gs, (0, 0))
+            # Tiêu đề chính
+            t1 = f_huge.render("KỶ NGUYÊN", True, (220, 20, 20))
+            t2 = f_huge.render("HỦY DIỆT",  True, (255, 50, 50))
+            t1.set_alpha(int(255 * prog))
+            t2.set_alpha(int(255 * max(0, min(1, (local-20)/80))))
+            x1 = sw//2 - t1.get_width()//2
+            x2 = sw//2 - t2.get_width()//2
+            y1 = sh//2 - 140
+            y2 = sh//2 - 10
+            inten = 10 if local < 40 else 3
+            if local > 5:  glitch_text(canvas, t1, x1, y1, inten)
+            if local > 25: glitch_text(canvas, t2, x2, y2, inten)
+            # Dòng phụ
+            sub = f_mid.render("☠  TRÙM CUỐI — HANG TẬN THẾ  ☠", True, (200, 180, 0))
+            sub.set_alpha(int(180 * prog))
+            canvas.blit(sub, (sw//2 - sub.get_width()//2, sh//2 + 90))
+            shake_x = int(4 * math.sin(local * 1.4)) if local < 50 else 0
+            shake_y = int(3 * math.cos(local * 1.2)) if local < 50 else 0
+
+        # ── Phase 3: Subtitle cuộn lên (60f) ────────────────────────────────
+        elif cur_phase == 3:
+            prog = local / 60
+            canvas.fill((4, 0, 4))
+            ghost = f_large.render("KỶ NGUYÊN HỦY DIỆT", True, (60, 8, 8))
+            canvas.blit(ghost, (sw//2 - ghost.get_width()//2, sh//2 - 100))
+            for i, ln in enumerate(subtitle_lines):
+                ls = f_mid.render(ln, True, (220, 200, 200))
+                ty = sh//2 + 55 + i * 40
+                sy = sh + 40
+                cy = int(sy + (ty - sy) * min(1.0, prog * 2.5))
+                ls.set_alpha(int(255 * min(1.0, prog * 4)))
+                canvas.blit(ls, (sw//2 - ls.get_width()//2, cy))
+
+        # ── Phase 4: Countdown 3-2-1 (90f) ──────────────────────────────────
+        elif cur_phase == 4:
+            canvas.fill((2, 0, 2))
+            slot = local // 30
+            loc2 = local % 30
+            num  = 3 - slot
+            if num > 0:
+                scale  = 1.0 + 0.6 * (1 - loc2 / 30)
+                alpha  = int(255 * (1 - loc2 / 30))
+                cs = f_huge.render(str(num), True, (255, 60, 60))
+                nw = max(1, int(cs.get_width() * scale))
+                nh = max(1, int(cs.get_height() * scale))
+                try:    cs2 = pygame.transform.smoothscale(cs, (nw, nh))
+                except: cs2 = cs
+                cs2.set_alpha(alpha)
+                canvas.blit(cs2, (sw//2 - nw//2, sh//2 - nh//2))
+            shake_x = int(8 * math.sin(loc2 * 2.8)) if loc2 < 6 else int(shake_x * 0.5)
+            shake_y = int(5 * math.cos(loc2 * 2.8)) if loc2 < 6 else int(shake_y * 0.5)
+
+        # ── Phase 5: CHIẾN ĐẤU! flash (60f) ────────────────────────────────
+        else:
+            prog = local / 60
+            fv   = int(255 * (1 - prog))
+            canvas.fill((fv, fv // 5, fv // 5))
+            fs = f_huge.render("CHIẾN ĐẤU!", True, (255, 255, 255))
+            fs.set_alpha(int(255 * (1 - prog * 0.7)))
+            canvas.blit(fs, (sw//2 - fs.get_width()//2, sh//2 - fs.get_height()//2))
+
+        # ── Blit canvas + scanlines + vignette ──────────────────────────────
+        draw_scanlines(canvas)
+        screen.fill((0, 0, 0))
+        screen.blit(canvas, (shake_x, shake_y))
+
+        vig = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        for th in range(1, 28, 4):
+            a = int(110 * (1 - th / 28))
+            pygame.draw.rect(vig, (0,0,0,a), (th,th,sw-th*2,sh-th*2), 3)
+        screen.blit(vig, (0, 0))
+
+        pygame.display.flip()
+        clock.tick(fps)
+        frame += 1
+
+    screen.fill((0, 0, 0))
+    pygame.display.flip()
 
 
 class DialogueSystem:
@@ -208,7 +421,7 @@ class DialogueSystem:
             portrait_x = self.sw - p_size[0] - 30
             box_x      = 30
             box_w      = portrait_x - box_x - 20
-            name_str   = "CHIẾN HẠM HỦY DIỆT"
+            name_str   = getattr(self, 'boss_name', 'CHIẾN HẠM HỦY DIỆT')
             name_col   = RED
             box_col    = (60, 0, 0, 210)
             border_col = RED
@@ -283,12 +496,15 @@ class DialogueSystem:
             self.screen.blit(surf, (x, y + i * line_h))
 
 
-def run_dialogue(screen, clock, dialogue_list, fps=60):
+def run_dialogue(screen, clock, dialogue_list, fps=60, boss_name=None):
     """
     Hàm tiện ích: chạy vòng lặp hội thoại hoàn chỉnh (blocking).
+    boss_name: tên boss hiển thị, mặc định "CHIẾN HẠM HỦY DIỆT"
     Trả về khi hội thoại kết thúc.
     """
     ds = DialogueSystem(screen)
+    if boss_name:
+        ds.boss_name = boss_name
     ds.start(dialogue_list)
 
     while not ds.is_done():

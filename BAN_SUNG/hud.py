@@ -72,6 +72,75 @@ class HUD:
                 elif game_map.detail_grid[y][x] == 1: # Path
                     pygame.draw.rect(self.mm_background, (50, 50, 30), (dx, dy, 1, 1))
 
+    def draw_boss_hud(self, screen, boss):
+        """Vẽ thanh HP Boss to lớn ở giữa đầu màn hình (Màn 6)."""
+        import pygame
+        hp_pct = max(0.0, boss.hp / boss.max_hp)
+        phase = getattr(boss, 'boss_phase', 1)
+        trans_timer = getattr(boss, 'phase_transition_timer', 0)
+
+        bar_w = 480
+        bar_h = 22
+        bar_x = SCREEN_W // 2 - bar_w // 2
+        bar_y = 14
+
+        # Màu theo phase
+        if phase == 3:
+            bar_color = (255, 40, 40)
+            phase_text = "☠ PHASE III — ĐIÊN CUỒNG ☠"
+            border_col = (255, 80, 80)
+        elif phase == 2:
+            bar_color = (255, 180, 0)
+            phase_text = "⚡ PHASE II — CUỒNG NỘ ⚡"
+            border_col = (255, 210, 60)
+        else:
+            bar_color = (50, 220, 80)
+            phase_text = "PHASE I — ỔN ĐỊNH"
+            border_col = (80, 255, 120)
+
+        # Nền
+        pygame.draw.rect(screen, (10, 5, 10), (bar_x - 3, bar_y - 3, bar_w + 6, bar_h + 6), border_radius=5)
+        pygame.draw.rect(screen, (60, 10, 10), (bar_x, bar_y, bar_w, bar_h), border_radius=4)
+
+        # Fill HP
+        if hp_pct > 0:
+            fill_w = int(bar_w * hp_pct)
+            pygame.draw.rect(screen, bar_color, (bar_x, bar_y, fill_w, bar_h), border_radius=4)
+            # Hiệu ứng sáng phía trên
+            shine_col = tuple(min(255, c + 60) for c in bar_color)
+            pygame.draw.rect(screen, shine_col, (bar_x, bar_y, fill_w, bar_h // 2), border_radius=4)
+
+        # Viền neon nhấp nháy khi chuyển phase
+        if trans_timer > 0:
+            pulse_alpha = int(200 * (trans_timer / 180.0))
+            flash_col = (255, 255, 0) if phase == 2 else (255, 50, 50)
+            pygame.draw.rect(screen, flash_col, (bar_x - 3, bar_y - 3, bar_w + 6, bar_h + 6), 2, border_radius=5)
+        else:
+            pygame.draw.rect(screen, border_col, (bar_x - 2, bar_y - 2, bar_w + 4, bar_h + 4), 1, border_radius=5)
+
+        # Tên Boss
+        font_b = pygame.font.SysFont("segoeui", 13, bold=True)
+        boss_label = font_b.render("KỶ NGUYÊN HỦY DIỆT — TRÙM CUỐI", True, (255, 220, 60))
+        screen.blit(boss_label, (SCREEN_W // 2 - boss_label.get_width() // 2, bar_y + bar_h + 4))
+
+        # Phase text
+        phase_col = (255, 40, 40) if phase == 3 else ((255, 200, 0) if phase == 2 else (100, 255, 120))
+        phase_surf = font_b.render(phase_text, True, phase_col)
+        screen.blit(phase_surf, (SCREEN_W // 2 - phase_surf.get_width() // 2, bar_y + bar_h + 22))
+
+        # HP số
+        hp_num = font_b.render(f"{int(boss.hp)} / {int(boss.max_hp)}", True, (200, 200, 200))
+        screen.blit(hp_num, (SCREEN_W // 2 - hp_num.get_width() // 2, bar_y + (bar_h - hp_num.get_height()) // 2 + 2))
+
+        # Cảnh báo Phase Transition
+        if trans_timer > 0:
+            warn_txt = "⚠ PHASE CHUYỂN! NGUY HIỂM TĂNG CAO! ⚠"
+            warn_alpha = int(255 * abs(math.sin(trans_timer * 0.08)))
+            warn_font = pygame.font.SysFont("segoeui", 20, bold=True)
+            warn_surf = warn_font.render(warn_txt, True, (255, 255, 50))
+            warn_surf.set_alpha(warn_alpha)
+            screen.blit(warn_surf, (SCREEN_W // 2 - warn_surf.get_width() // 2, bar_y + bar_h + 44))
+
     def draw(self, screen, player, level, game_map, enemies, items=None):
         # ── Bottom Left: Stats ──────────────────────────────────────────────
         margin = 20

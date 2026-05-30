@@ -106,7 +106,7 @@ from upgrade_menu import UpgradeMenu
 from menu import MainMenu
 from in_game_menu import InGameSettings
 from video_player import play_video
-from dialogue import run_dialogue, LEVEL5_DIALOGUE, LEVEL1_DIALOGUE
+from dialogue import run_dialogue, LEVEL5_DIALOGUE, LEVEL1_DIALOGUE, LEVEL6_DIALOGUE, run_boss_cutscene
 
 
 class GameApp:
@@ -354,10 +354,36 @@ class GameApp:
         
         self.state = "GAME"
         sound_manager.play_bg_music(track="combat")
+        
+        # ── Hiệu ứng đặc biệt khi vào Màn 6 (Hang Boss cuối) ────────────────
+        if self.level == 6:
+            # Tắt báo động cũ từ màn 5 nếu còn
+            self.alarm_active = False
+            if self.siren_channel:
+                sound_manager.stop_channel(self.siren_channel)
+                self.siren_channel = None
+            # Hiệu ứng xuất hiện boss tại vị trí player
+            import time
+            boss_list = [e for e in self.enemy_manager.enemies if e.type == "boss"]
+            if boss_list:
+                b = boss_list[0]
+                self.effect_manager.add_explosion(b.x, b.y, radius=180)
+                self.effect_manager.add_floating_text(b.x, b.y - 60,
+                    "☠ TRÙM CUỐI ĐÃ XUẤT HIỆN — CHIẾN ĐẤU ĐẾN HƠI THỞ CUỐI CÙNG! ☠", (255, 50, 50))
+            self.effect_manager.add_floating_text(
+                self.player.x, self.player.y - 60,
+                "HANG TRÙM CUỐI — KHÔNG CÓ LỐI THOÁT!", (255, 200, 0))
+            sound_manager.play('hurt')
 
-        # ── Kích hoạt hội thoại điện ảnh trước màn chơi ──────────────────
-        if new_campaign and self.level == 5:
+        # ── Kích hoạt các màn hình điện ảnh trước màn chơi ─────────────────
+        if new_campaign and self.level == 6:
+            # Cutscene kịch tính + hội thoại trước trận boss cuối
+            run_boss_cutscene(self.screen, self.clock)
+            run_dialogue(self.screen, self.clock, LEVEL6_DIALOGUE, boss_name="KỶ NGUYÊN HỦY DIỆT")
+
+        elif new_campaign and self.level == 5:
             run_dialogue(self.screen, self.clock, LEVEL5_DIALOGUE)
+
         elif new_campaign and self.level == 1:
             run_dialogue(self.screen, self.clock, LEVEL1_DIALOGUE)
 
@@ -1544,6 +1570,13 @@ class GameApp:
 
             # Draw HUD
             self.hud.draw(self.screen, self.player, self.level, self.game_map, self.enemy_manager.enemies, self.item_manager.items)
+            
+            # ── Boss HUD lớn (Màn 6) ─────────────────────────────────────────
+            if self.level == 6 and self.enemy_manager:
+                for e in self.enemy_manager.enemies:
+                    if e.alive and e.type == "boss":
+                        self.hud.draw_boss_hud(self.screen, e)
+                        break
 
             # ── WARNING BANNER IF BOSS IS HUNTING ────────────────────────────
             boss_hunting = False
@@ -1556,7 +1589,8 @@ class GameApp:
                         if getattr(e, 'force_hunt', False):
                             boss_fast_hunting = True
             
-            if boss_hunting:
+            # Màn 6 không cần banner boss hunting (đã có Boss HUD riêng ở trên)
+            if boss_hunting and self.level != 6:
                 pulse = abs(math.sin(pygame.time.get_ticks() / 150))
                 # Red flashing warning box at the top
                 warn_w = 480

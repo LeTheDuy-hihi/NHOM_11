@@ -355,12 +355,17 @@ class Enemy:
         else: # boss
             # Bosses scale even harder
             if level == 6:
-                # Boss Màn 6 (Solo Boss Cuối): Siêu to khổng lồ, siêu trâu bò
-                self.hp = BOSS_HP * 35
-                self.speed = BOSS_SPEED * 1.0
-                self.damage = BOSS_DAMAGE * 1.8
-                self.range = BOSS_RANGE + 200
-                self.max_cooldown = 10
+                # Boss Màn 6 (Trùm Cuối): ĐỨNG IM, SPAM CHIÊU liên tục
+                self.hp = BOSS_HP * 28        # ~16800 HP - cân bằng hơn
+                self.speed = 0                 # KHÔNG DI CHUYỂN
+                self.damage = BOSS_DAMAGE * 1.4
+                self.range = 99999             # Tấm nhìn vô hạn
+                self.max_cooldown = 999        # Không dùng cooldown thường
+                # Hệ thống 3 Phase
+                self.boss_phase = 1
+                self.phase_transition_timer = 0
+                self.phase_announced = set()
+                self.spawn_x = None  # Ghi nhớ vị trí spawn để khóa cứng
             elif level == 5:
                 # Boss Màn 5: CHIẾN HẠM HUỶ DIỆT - Siêu mạnh
                 self.hp = BOSS_HP * 3.5
@@ -383,7 +388,7 @@ class Enemy:
                 3: "SPIRAL BLIZZARD",
                 4: "TÊN LỬA ĐỊNH VỊ",
                 5: "CHIẾN HẠM HUỶ DIỆT",
-                6: "KỶ NGUYÊN HỦY DIỆT"
+                6: "KỶ NGUYÊN HỦY DIỆT — PHASE I"
             }
             self.skill_name = skills.get(self.level, "HEAVY ATTACK")
             self.skill_timer = 0
@@ -983,6 +988,21 @@ class Enemy:
                             self.path_timer = 45 + random.randint(0, 15)
                     
         elif self.type == "boss":
+            # Boss Level 6: ĐỨNG IM hoàn toàn — ghi nhớ và khoá vị trí spawn
+            if self.level == 6:
+                if getattr(self, 'spawn_x', None) is None:
+                    self.spawn_x = self.x
+                    self.spawn_y = self.y
+                else:
+                    self.x = self.spawn_x
+                    self.y = self.spawn_y
+                # Xoay nhắm player
+                self.angle = math.atan2(player.y - self.y, player.x - self.x)
+                self.draw_angle = self.angle
+                # Bắn kỹ năng trực tiếp (shoot() có skill_timer nội bộ)
+                self.shoot(player, bullet_manager, effect_manager, sound_manager)
+                return  # Skip toàn bộ logic patrol/hunt/path
+
             # Lưu tham chiếu để dùng khi vẽ tia quét
             self._last_player = player
             self._last_game_map = game_map
@@ -1088,13 +1108,25 @@ class Enemy:
             # 4. Tìm đường đi
             if self.boss_state == "HUNT":
                 if self.path_timer <= 0 or not self.path:
-                    self.path_timer = 12 + random.randint(0, 8)  # Staggered updates (was 6-10)
-                    # Dự đoán trước 1 chút để đỡ bị kẹt
-                    pred_x, pred_y = ai_logic.predict_player_pos(player, 10)
+                    self.path_timer = 12 + random.randint(0, 8)
                     
-                    # Sử dụng thuật toán A* thay vì BFS để Boss tìm thấy đường đi xa ở bản đồ rộng Màn 5
-                    self.current_algo = "ASTAR"
-                    self.path = ai_logic.astar_path(self.x, self.y, player.x, player.y, game_map)
+                    # Level-specific pathfinding algorithm
+                    if self.level == 1:
+                        self.current_algo = "BFS"
+                        self.path = ai_logic.bfs_path(self.x, self.y, player.x, player.y, game_map)
+                    elif self.level == 2:
+                        self.current_algo = "DFS"
+                        self.path = ai_logic.dfs_path(self.x, self.y, player.x, player.y, game_map)
+                    elif self.level == 3:
+                        self.current_algo = "ASTAR"
+                        self.path = ai_logic.astar_path(self.x, self.y, player.x, player.y, game_map)
+                    elif self.level == 4:
+                        self.current_algo = "HEURISTIC"
+                        self.path = ai_logic.heuristic_path(self.x, self.y, player.x, player.y, game_map)
+                    else:
+                        # Default fallback to A*
+                        self.current_algo = "ASTAR"
+                        self.path = ai_logic.astar_path(self.x, self.y, player.x, player.y, game_map)
                     if not self.path:
                         self.path_timer = 30 + random.randint(0, 15)
             else: # PATROL
@@ -1184,7 +1216,11 @@ class Enemy:
                     self.patrol_target = None
         
         # ── Shooting ────────────────────────────────────────────────────────
-        if has_los and dist_to_player <= self.range:
+        # Boss Level 6: Đứng im, luôn nhắm player, shoot theo timer riêng trong shoot()
+        if self.type == "boss" and self.level == 6:
+            self.angle = math.atan2(player.y - self.y, player.x - self.x)
+            self.shoot(player, bullet_manager, effect_manager, sound_manager)
+        elif has_los and dist_to_player <= self.range:
             self.angle = math.atan2(player.y - self.y, player.x - self.x)  # nòng pháo nhắm player
             # thân xe KHÔNG thay đổi khi bắn — giữ move_angle
             
@@ -1261,7 +1297,7 @@ class Enemy:
                     ty = my + math.sin(fa) * 100
                     bullet_manager.add_bullet(mx, my, tx, ty, is_enemy=True, damage=self.damage * 0.5)
                         
-            else: # Level 5 and up
+            elif self.level == 5:
                 # CHIẾN HẠM HUỶ DIỆT (Level 5 Boss Skill Set) - SIÊU KHÓ
                 self.skill_timer += 1
                 self.cooldown = 6
@@ -1314,6 +1350,125 @@ class Enemy:
                         ry = player.y + random.randint(-200, 200)
                         bullet_manager.add_missile(self.x, self.y, type('P', (), {'x': rx, 'y': ry})(), damage=self.damage * 0.6)
 
+            else: # Level 6 — KỶ NGUYÊN HỦY DIỆT (3 Phase)
+                self.skill_timer += 1
+                hp_pct = self.hp / self.max_hp
+
+                # ── Xác định Phase dựa trên HP ──────────────────────────────
+                new_phase = 1
+                if hp_pct <= 0.30:
+                    new_phase = 3
+                elif hp_pct <= 0.60:
+                    new_phase = 2
+
+                # Khi chuyển sang Phase mới: cảnh báo và thay đổi stats
+                if new_phase > getattr(self, 'boss_phase', 1):
+                    self.boss_phase = new_phase
+                    self.phase_transition_timer = 180  # 3 giây cảnh báo
+                    if new_phase == 2:
+                        self.skill_name = "KỶ NGUYÊN HỦY DIỆT — PHASE II"
+                        self.speed = BOSS_SPEED * 1.1
+                        self.max_cooldown = 35
+                    elif new_phase == 3:
+                        self.skill_name = "KỶ NGUYÊN HỦY DIỆT — PHASE III ☠"
+                        self.speed = BOSS_SPEED * 1.4
+                        self.max_cooldown = 20
+
+                # Giảm timer cảnh báo chuyển phase
+                if getattr(self, 'phase_transition_timer', 0) > 0:
+                    self.phase_transition_timer -= 1
+
+                phase = getattr(self, 'boss_phase', 1)
+
+                # ══════════════════════════════════════════════════════════
+                #  PHASE 1: HP > 60% — Hỏa lực ổn định, cảnh báo cao
+                # ══════════════════════════════════════════════════════════
+                if phase >= 1:
+                    # SKILL A: Bắn 3 làn đạn cơ bản mỗi 55 frame
+                    if self.skill_timer % 55 == 0:
+                        for s in [-0.22, 0, 0.22]:
+                            fa = self.angle + s
+                            tx = mx + math.cos(fa) * 100
+                            ty = my + math.sin(fa) * 100
+                            bullet_manager.add_bullet(mx, my, tx, ty, is_enemy=True, damage=self.damage * 0.7)
+
+                    # SKILL B: Tên lửa định vị đơn mỗi 110 frame
+                    if self.skill_timer % 110 == 0:
+                        bullet_manager.add_missile(mx, my, player, damage=self.damage * 1.2)
+
+                    # SKILL C: Vòng đạn 8 hướng mỗi 150 frame
+                    if self.skill_timer % 150 == 0:
+                        for i in range(8):
+                            fa = (math.pi * 2 / 8) * i
+                            tx = mx + math.cos(fa) * 100
+                            ty = my + math.sin(fa) * 100
+                            bullet_manager.add_bullet(mx, my, tx, ty, is_enemy=True, damage=self.damage * 0.55, color=(200, 50, 255))
+
+                # ══════════════════════════════════════════════════════════
+                #  PHASE 2: HP ≤ 60% — Thêm chiến thuật phức tạp
+                # ══════════════════════════════════════════════════════════
+                if phase >= 2:
+                    # SKILL D: Xoáy ốc 2 cánh mỗi 12 frame (chậm vừa)
+                    if self.skill_timer % 12 == 0:
+                        spiral_angle = (self.skill_timer * 0.08) % (math.pi * 2)
+                        for arm in range(2):
+                            fa = spiral_angle + arm * math.pi
+                            tx = mx + math.cos(fa) * 120
+                            ty = my + math.sin(fa) * 120
+                            bullet_manager.add_bullet(mx, my, tx, ty, is_enemy=True, damage=self.damage * 0.4, color=(255, 80, 0))
+
+                    # SKILL E: Bom liên hoàn mỗi 120 frame
+                    if self.skill_timer % 120 == 0:
+                        bullet_manager.add_grenade(self.x, self.y, player.x + random.randint(-60, 60), player.y + random.randint(-60, 60), "MOLOTOV")
+                        bullet_manager.add_grenade(self.x, self.y, player.x + random.randint(-40, 40), player.y + random.randint(-40, 40), "FRAG")
+
+                    # SKILL F: 3 Tên lửa định vị mỗi 180 frame
+                    if self.skill_timer % 180 == 0:
+                        for offset in [-30, 0, 30]:
+                            bullet_manager.add_missile(
+                                mx + offset * math.sin(self.angle),
+                                my - offset * math.cos(self.angle),
+                                player, damage=self.damage * 0.9)
+
+                # ══════════════════════════════════════════════════════════
+                #  PHASE 3: HP ≤ 30% — ĐIÊN CUỒNG TOÀN LỰC
+                # ══════════════════════════════════════════════════════════
+                if phase >= 3:
+                    # SKILL G: Xoáy ốc 3 cánh nhanh mỗi 8 frame
+                    if self.skill_timer % 8 == 0:
+                        spiral_angle = (self.skill_timer * 0.12) % (math.pi * 2)
+                        for arm in range(3):
+                            fa = spiral_angle + arm * (math.pi * 2 / 3)
+                            tx = mx + math.cos(fa) * 120
+                            ty = my + math.sin(fa) * 120
+                            bullet_manager.add_bullet(mx, my, tx, ty, is_enemy=True, damage=self.damage * 0.45, color=(255, 0, 50))
+
+                    # SKILL H: Vòng đạn 16 hướng mỗi 90 frame
+                    if self.skill_timer % 90 == 0:
+                        base_angle = (self.skill_timer * 0.2) % (math.pi * 2)
+                        for i in range(16):
+                            fa = base_angle + (math.pi * 2 / 16) * i
+                            tx = mx + math.cos(fa) * 100
+                            ty = my + math.sin(fa) * 100
+                            bullet_manager.add_bullet(mx, my, tx, ty, is_enemy=True, damage=self.damage * 0.5, color=(255, 0, 200))
+
+                    # SKILL I: Mưa tên lửa x5 mỗi 150 frame
+                    if self.skill_timer % 150 == 0:
+                        for _ in range(5):
+                            rx = player.x + random.randint(-180, 180)
+                            ry = player.y + random.randint(-180, 180)
+                            bullet_manager.add_missile(self.x, self.y, type('P', (), {'x': rx, 'y': ry})(), damage=self.damage * 0.65)
+                        # Thêm 2 tên lửa định vị thẳng vào người chơi
+                        bullet_manager.add_missile(mx, my, player, damage=self.damage * 1.0)
+                        bullet_manager.add_missile(mx, my, player, damage=self.damage * 1.0)
+
+                    # SKILL J: Bom tứ phía mỗi 200 frame
+                    if self.skill_timer % 200 == 0:
+                        for _ in range(3):
+                            bullet_manager.add_grenade(self.x, self.y, player.x + random.randint(-80, 80), player.y + random.randint(-80, 80), "MOLOTOV")
+                        bullet_manager.add_grenade(self.x, self.y, player.x + random.randint(-30, 30), player.y + random.randint(-30, 30), "FRAG")
+                        bullet_manager.add_grenade(self.x, self.y, player.x, player.y, "FLASHBANG")
+
             effect_manager.add_muzzle_flash(mx, my, self.angle)
 
     def take_damage(self, amount, effect_manager, sound_manager):
@@ -1328,9 +1483,13 @@ class Enemy:
 
         # Giảm sát thương nhận vào đối với Boss cuối màn 6 để kéo dài trận đấu
         if self.type == "boss" and self.level == 6:
-            amount *= 0.35  # Chỉ nhận 35% sát thương
+            phase = getattr(self, 'boss_phase', 1)
+            # Giảm giáp theo phase: Phase 1=65%, Phase 2=55%, Phase 3=45%
+            mitigation = {1: 0.35, 2: 0.45, 3: 0.55}.get(phase, 0.35)
+            amount *= mitigation
             # Hiện text giảm sát thương màu neon đặc biệt để người chơi nhận biết
-            effect_manager.add_floating_text(self.x, self.y - 45, f"-{int(amount)} (GIÁP HẤP THỤ)", (0, 220, 255))
+            color = (0, 220, 255) if phase == 1 else ((255, 160, 0) if phase == 2 else (255, 50, 50))
+            effect_manager.add_floating_text(self.x, self.y - 45, f"-{int(amount)} (GIÁP)", color)
         else:
             # Hiện text sát thương thường
             effect_manager.add_floating_text(self.x, self.y - 30, f"-{int(amount)}", (255, 100, 100))
@@ -1618,27 +1777,68 @@ class Enemy:
         
         # Boss glow and HUD
         if self.type == "boss":
+            phase = getattr(self, 'boss_phase', 1)
+            # Màu glow theo phase
+            if self.level == 6:
+                if phase == 3:
+                    glow_color = (255, 40, 40)    # Đỏ rực — Phase 3
+                elif phase == 2:
+                    glow_color = (255, 140, 0)    # Cam — Phase 2
+                else:
+                    glow_color = BOSS_COLOR        # Tím — Phase 1
+            else:
+                glow_color = BOSS_COLOR
+
             # Pulsing glow
-            pulse = int(50 + 30 * math.sin(pygame.time.get_ticks() / 150))
-            glow_r = 65 if self.level == 6 else (38 if self.level == 5 else (35 if self.level == 4 else 20))
+            pulse_spd = 80 if (self.level == 6 and phase == 3) else 150
+            pulse = int(50 + 30 * math.sin(pygame.time.get_ticks() / pulse_spd))
+            glow_r = 72 if self.level == 6 else (38 if self.level == 5 else (35 if self.level == 4 else 20))
             surf = pygame.Surface((glow_r*6, glow_r*6), pygame.SRCALPHA)
-            pygame.draw.circle(surf, (*BOSS_COLOR, pulse), (glow_r*3, glow_r*3), int(glow_r*2.5))
+            pygame.draw.circle(surf, (*glow_color, pulse), (glow_r*3, glow_r*3), int(glow_r*2.5))
             screen.blit(surf, (sx - glow_r*3, sy - glow_r*3))
-            
-            # HP Bar (Modern)
-            bar_w = 60
-            bar_h = 6
+
+            # Hiệu ứng chuyển Phase: flash đỏ/trắng rực rỡ
+            trans_timer = getattr(self, 'phase_transition_timer', 0)
+            if trans_timer > 0 and self.level == 6:
+                flash_alpha = int(200 * (trans_timer / 180.0))
+                flash_col = (255, 50, 50) if phase == 3 else (255, 180, 0)
+                flash_r = glow_r + 40
+                flash_surf = pygame.Surface((flash_r*4, flash_r*4), pygame.SRCALPHA)
+                pygame.draw.circle(flash_surf, (*flash_col, flash_alpha), (flash_r*2, flash_r*2), flash_r*2)
+                screen.blit(flash_surf, (sx - flash_r*2, sy - flash_r*2))
+
+            # HP Bar
+            if self.level == 6:
+                bar_w = 90
+                bar_h = 10
+            else:
+                bar_w = 60
+                bar_h = 6
             bx = sx - bar_w//2
-            by = sy - glow_r - 12
+            by = sy - glow_r - 14
             pct = max(0, self.hp / self.max_hp)
-            pygame.draw.rect(screen, (30, 30, 30), (bx-1, by-1, bar_w+2, bar_h+2))
-            pygame.draw.rect(screen, RED, (bx, by, bar_w, bar_h))
-            pygame.draw.rect(screen, LIME, (bx, by, int(bar_w*pct), bar_h))
+            # Màu HP bar theo phase
+            if self.level == 6:
+                if phase == 3:
+                    bar_color = (255, 40, 40)
+                elif phase == 2:
+                    bar_color = (255, 180, 0)
+                else:
+                    bar_color = (50, 220, 80)
+            else:
+                bar_color = LIME
+            pygame.draw.rect(screen, (10, 10, 10), (bx-2, by-2, bar_w+4, bar_h+4))
+            pygame.draw.rect(screen, (80, 10, 10), (bx, by, bar_w, bar_h))
+            pygame.draw.rect(screen, bar_color, (bx, by, int(bar_w*pct), bar_h))
+            # Viền neon
+            pygame.draw.rect(screen, glow_color, (bx-2, by-2, bar_w+4, bar_h+4), 1)
             
             # Skill Indicator
-            font = pygame.font.SysFont("arial", 12, bold=True)
-            txt = font.render(self.skill_name, True, WHITE)
-            screen.blit(txt, (sx - txt.get_width()//2, by - 14))
+            font_size = 11 if self.level == 6 else 12
+            font = pygame.font.SysFont("arial", font_size, bold=True)
+            skill_col = (255, 40, 40) if (self.level == 6 and phase == 3) else ((255, 180, 0) if (self.level == 6 and phase == 2) else WHITE)
+            txt = font.render(self.skill_name, True, skill_col)
+            screen.blit(txt, (sx - txt.get_width()//2, by - 16))
             
         # Vẽ vòng sao choáng trên đầu nếu bị choáng
         if getattr(self, 'stun_timer', 0) > 0:
@@ -1680,10 +1880,10 @@ class EnemyManager:
         self.respawn_queue = []
         
         if level == 6:
-            # Hang Boss cuối: Chỉ spawn duy nhất Boss 5 (trùm cuối) tại trung tâm
+            # Hang Boss cuối: Chỉ spawn duy nhất Boss Level 6 (Trùm Cuối) tại trung tâm
             bx = game_map.width // 2 * TILE_SIZE + TILE_SIZE // 2 if game_map else 25 * TILE_SIZE + TILE_SIZE // 2
             by = game_map.height // 2 * TILE_SIZE + TILE_SIZE // 2 if game_map else 20 * TILE_SIZE + TILE_SIZE // 2
-            self.enemies.append(Enemy(bx, by, "boss", 5))
+            self.enemies.append(Enemy(bx, by, "boss", 6))
             return
             
         if game_map and hasattr(game_map, 'camera_spawns'):

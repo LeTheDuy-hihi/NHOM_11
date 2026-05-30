@@ -7,6 +7,3 @@ Checking SMG at d:\TRI_TUE_NHAN_TAO\GAME_HAY\BAN_SUNG\ANH\MP.jpg...
   Loaded SMG successfully! Keys in dict: ['AK-47', 'SHOTGUN', 'SMG']
 Checking FLAMETHROWER at d:\TRI_TUE_NHAN_TAO\GAME_HAY\BAN_SUNG\ANH\súng lửa.png...
   Loaded FLAMETHROWER successfully! Keys in dict: ['AK-47', 'SHOTGUN', 'SMG', 'FLAMETHROWER']
-[draw] active_weapon: AK-47
-[draw] weapons_info: [{'key': '1', 'name': 'AK-47', 'id': 'AK-47'}]
-[draw] weapon_images keys: ['AK-47', 'SHOTGUN', 'SMG', 'FLAMETHROWER']

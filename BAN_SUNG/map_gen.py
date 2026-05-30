@@ -172,12 +172,88 @@ class GameMap:
             self.grid[H-4][W-4]=TILE_EXIT
         self.exit_px = exit_px
         self.exit_py = exit_py
-        for _ in range(15+level*5):
-            for _ in range(30):
-                ex,ey=random.randint(W//3,W-3),random.randint(2,H-3)
-                if self.grid[ey][ex]==TILE_EMPTY:
-                    self.enemy_spawns.append((ex*TILE_SIZE+TILE_SIZE//2,ey*TILE_SIZE+TILE_SIZE//2)); break
-        self.enemy_spawns.append((exit_px,exit_py))
+        
+        # Màn 1: Xe tăng rải đều toàn bản đồ theo lưới grid (BFS tìm đường hiệu quả trên bản đồ phân tầng đều)
+        if level == 1:
+            # Xác định vùng trung tâm (boss zone) — dịn sạch để boss có chỗ đứng
+            boss_cx, boss_cy = W // 2, H // 2
+            for dy in range(-5, 6):
+                for dx in range(-5, 6):
+                    ny2, nx2 = boss_cy + dy, boss_cx + dx
+                    if 0 < ny2 < H-1 and 0 < nx2 < W-1:
+                        self.grid[ny2][nx2] = TILE_EMPTY
+            
+            # Phân chia bản đồ thành lưới (8x6 vùng), mỗi vùng spawn 1 xe tăng
+            grid_cols = 8   # số cột vùng
+            grid_rows = 6   # số hàng vùng
+            zone_w = (W - 8) // grid_cols  # độ rộng mỗi vùng
+            zone_h = (H - 8) // grid_rows  # chiều cao mỗi vùng
+            
+            for row in range(grid_rows):
+                for col in range(grid_cols):
+                    # Vùng x = [4 + col*zone_w, 4 + (col+1)*zone_w)
+                    zx0 = 4 + col * zone_w
+                    zx1 = 4 + (col + 1) * zone_w
+                    zy0 = 4 + row * zone_h
+                    zy1 = 4 + (row + 1) * zone_h
+                    
+                    # Bỏ qua vùng trung tâm (bò qua 2 vùng giữa) — đó là chỗ của boss
+                    is_boss_zone = (
+                        abs((zx0 + zx1) // 2 - boss_cx) < zone_w and
+                        abs((zy0 + zy1) // 2 - boss_cy) < zone_h
+                    )
+                    if is_boss_zone:
+                        continue
+                    
+                    # Bỏ qua vùng spawn của player (góc trên-trái)
+                    if zx0 < 10 and zy0 < 10:
+                        continue
+                    
+                    # Thử tỬm ô trống ngẫu nhiên trong vùng để spawn
+                    spawned = False
+                    for _ in range(25):
+                        tx = random.randint(zx0, max(zx0, zx1 - 1))
+                        ty = random.randint(zy0, max(zy0, zy1 - 1))
+                        if 1 <= tx < W-1 and 1 <= ty < H-1:
+                            if self.grid[ty][tx] == TILE_EMPTY:
+                                # Đảm bảo không quá gần spawn của player
+                                if math.hypot(tx - 4, ty - 4) > 8:
+                                    self.enemy_spawns.append((
+                                        tx * TILE_SIZE + TILE_SIZE // 2,
+                                        ty * TILE_SIZE + TILE_SIZE // 2
+                                    ))
+                                    spawned = True
+                                    break
+                    
+                    # Nếu không tìm được trong vùng, thử vị trí gần trung tâm vùng
+                    if not spawned:
+                        cx2 = (zx0 + zx1) // 2
+                        cy2 = (zy0 + zy1) // 2
+                        for r in range(1, 4):
+                            for dy2 in range(-r, r+1):
+                                for dx2 in range(-r, r+1):
+                                    nx2, ny2 = cx2 + dx2, cy2 + dy2
+                                    if 1 <= nx2 < W-1 and 1 <= ny2 < H-1:
+                                        if self.grid[ny2][nx2] == TILE_EMPTY:
+                                            if math.hypot(nx2 - 4, ny2 - 4) > 8:
+                                                self.enemy_spawns.append((
+                                                    nx2 * TILE_SIZE + TILE_SIZE // 2,
+                                                    ny2 * TILE_SIZE + TILE_SIZE // 2
+                                                ))
+                                                spawned = True
+                                                break
+                                if spawned:
+                                    break
+                            if spawned:
+                                break
+        else:
+            # Các màn khác: spawn random như cũ
+            for _ in range(15+level*5):
+                for _ in range(30):
+                    ex,ey=random.randint(W//3,W-3),random.randint(2,H-3)
+                    if self.grid[ey][ex]==TILE_EMPTY:
+                        self.enemy_spawns.append((ex*TILE_SIZE+TILE_SIZE//2,ey*TILE_SIZE+TILE_SIZE//2)); break
+            self.enemy_spawns.append((exit_px,exit_py))
         for _ in range(25+level*5):
             for _ in range(20):
                 ix,iy=random.randint(2,W-3),random.randint(2,H-3)
